@@ -177,6 +177,20 @@ export function createSpecRepoClient(env: SpecEnv): SpecRepoClient {
         if (Array.isArray(data) || data.type !== 'file' || typeof data.content !== 'string') {
           throw new Error(`${specPath} is not a file`);
         }
+
+        // Over 1 MB the Contents API returns metadata with an EMPTY content
+        // string and encoding "none". Decoding that yields "" and the spec
+        // silently reads as blank — which a subsequent check-in would then
+        // commit over the real file. Fall back to the Blob API, which serves
+        // base64 up to 100 MB.
+        if (data.encoding !== 'base64' || (data.content === '' && data.size > 0)) {
+          const blob = await octokit.rest.git.getBlob({ owner, repo, file_sha: data.sha });
+          if (blob.data.encoding !== 'base64') {
+            throw new Error(`${specPath} could not be decoded (encoding: ${blob.data.encoding})`);
+          }
+          return { content: Buffer.from(blob.data.content, 'base64').toString('utf8'), sha: data.sha };
+        }
+
         return { content: Buffer.from(data.content, 'base64').toString('utf8'), sha: data.sha };
       } catch (err) {
         if (statusOf(err) === 404) return null;
