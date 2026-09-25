@@ -33,14 +33,48 @@ export function findRuleRange(spec: string, ruleId: string): RuleRange | null {
   const start = match?.index ?? spec.indexOf(ruleId);
   if (start === -1) return null;
 
-  const blank = spec.indexOf('\n\n', start);
-  let end = blank === -1 ? spec.length : blank;
+  let end = endOfRuleBlock(spec, start);
 
   // Don't drag trailing whitespace into the selection — at the end of the file
   // that would highlight the blank tail of the editor.
   while (end > start && /\s/.test(spec[end - 1] ?? '')) end -= 1;
 
   return { start, end, line: countLines(spec, start) };
+}
+
+/** A line that begins a new block, so the previous rule has ended. */
+function startsNewBlock(line: string): boolean {
+  return (
+    line.trim() === '' ||
+    /^[ \t]*[-*+][ \t]+/.test(line) || // next list item — rules are usually a tight list
+    /^[ \t]*\d+[.)][ \t]+/.test(line) || // next ordered item
+    /^#{1,6}[ \t]/.test(line) // next heading
+  );
+}
+
+/**
+ * Where a rule's own text stops.
+ *
+ * Ending at the next blank line is not enough: specs normally write rules as a
+ * tight bullet list, so the following rule would be swept into the selection
+ * and a chip for R-302 would also highlight R-303. Continuation lines (the
+ * indented wrap of a long rule) must still be included, so only a line that
+ * opens a new block terminates the range.
+ */
+function endOfRuleBlock(spec: string, start: number): number {
+  let cursor = spec.indexOf('\n', start);
+
+  while (cursor !== -1) {
+    const lineStart = cursor + 1;
+    const nextBreak = spec.indexOf('\n', lineStart);
+    const line = spec.slice(lineStart, nextBreak === -1 ? spec.length : nextBreak);
+
+    if (startsNewBlock(line)) return cursor;
+    if (nextBreak === -1) return spec.length;
+    cursor = nextBreak;
+  }
+
+  return spec.length;
 }
 
 /** Zero-based line index of `offset`. */
