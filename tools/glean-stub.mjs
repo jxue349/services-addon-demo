@@ -117,7 +117,7 @@ function replyFor(prompt) {
   return SCENARIO;
 }
 
-createServer((req, res) => {
+const server = createServer((req, res) => {
   if (req.url === '/__log') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify(log, null, 2));
@@ -162,8 +162,30 @@ createServer((req, res) => {
       }),
     );
   });
-}).listen(PORT, '127.0.0.1', () => {
+});
+
+// The common case is starting a second copy while one is already running.
+// An unhandled 'error' event dumps a stack trace for that, which reads like a
+// bug in the tool rather than "it's already up".
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use — the stub is probably already running.`);
+    console.error('Either use the one that is up, or:');
+    console.error(`  lsof -ti:${PORT} | xargs kill      # stop it`);
+    console.error(`  STUB_PORT=3400 npm run stub:glean  # or run on another port`);
+    process.exit(1);
+  }
+  console.error(`Glean stub failed to start: ${err.message}`);
+  process.exit(1);
+});
+
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`Glean stub listening on http://127.0.0.1:${PORT}`);
   console.log(`Set GLEAN_BASE_URL=http://127.0.0.1:${PORT} and GLEAN_API_KEY=local-stub-token`);
   console.log(`Inspect what the app sent: curl -s http://127.0.0.1:${PORT}/__log`);
 });
+
+// Ctrl-C should free the port immediately rather than leaving it held.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => server.close(() => process.exit(0)));
+}
