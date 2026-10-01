@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSpecEnv } from '@/lib/env';
 import { apiError, apiErrorFromUnknown, newRequestId } from '@/lib/errors';
-import { SpecNotFoundError, createSpecRepoClient, readSpec } from '@/lib/github';
+import { SpecIsDirectoryError, SpecNotFoundError, createSpecRepoClient, readSpec } from '@/lib/github';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,6 +18,8 @@ export async function GET(): Promise<NextResponse> {
       // The UI turns this into the "Initialize spec in repo" offer.
       return apiError(404, err.message, requestId);
     }
+    // Server misconfiguration, not a client error: say which file to pick.
+    if (err instanceof SpecIsDirectoryError) return apiError(500, err.message, requestId);
     return apiErrorFromUnknown('GET /api/spec', err, requestId);
   }
 }

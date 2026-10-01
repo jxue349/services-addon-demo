@@ -95,8 +95,31 @@ describe('getFile', () => {
     await expect(createSpecRepoClient(env).getFile('main')).resolves.toBeNull();
   });
 
-  it('rejects a directory path', async () => {
-    getContent.mockResolvedValueOnce({ data: [{ type: 'file', name: 'a.md' }] });
+  it('rejects a non-file entry that is not a directory listing', async () => {
+    getContent.mockResolvedValueOnce({ data: { type: 'submodule', sha: 'x' } });
     await expect(createSpecRepoClient(env).getFile('main')).rejects.toThrow(/is not a file/);
+  });
+});
+
+describe('getFile with a directory path', () => {
+  it('names the .md files to choose from', async () => {
+    getContent.mockResolvedValueOnce({
+      data: [
+        { type: 'file', name: 'behavior.md', path: 'spec/behavior.md' },
+        { type: 'file', name: 'devices.md', path: 'spec/devices.md' },
+        { type: 'file', name: 'README.txt', path: 'spec/README.txt' },
+        { type: 'dir', name: 'archive', path: 'spec/archive' },
+      ],
+    });
+
+    const client = createSpecRepoClient({ ...env, specPath: 'spec' });
+    await expect(client.getFile('main')).rejects.toThrow(/is a directory. Set it to one file, e\.g\. spec\/behavior\.md/);
+  });
+
+  it('says so plainly when the directory holds no specs', async () => {
+    getContent.mockResolvedValueOnce({ data: [{ type: 'dir', name: 'archive', path: 'spec/archive' }] });
+
+    const client = createSpecRepoClient({ ...env, specPath: 'spec' });
+    await expect(client.getFile('main')).rejects.toThrow(/contains no \.md files/);
   });
 });

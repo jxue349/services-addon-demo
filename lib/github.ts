@@ -50,6 +50,25 @@ export class SpecNotFoundError extends Error {
   }
 }
 
+/**
+ * SPEC_PATH names a directory rather than a file — the obvious mistake once a
+ * repo holds several specs. Carries the candidates so the operator is told
+ * what to pick instead of getting a generic failure.
+ */
+export class SpecIsDirectoryError extends Error {
+  readonly candidates: string[];
+
+  constructor(path: string, candidates: string[]) {
+    super(
+      candidates.length > 0
+        ? `SPEC_PATH (${path}) is a directory. Set it to one file, e.g. ${candidates[0]}`
+        : `SPEC_PATH (${path}) is a directory and contains no .md files`,
+    );
+    this.name = 'SpecIsDirectoryError';
+    this.candidates = candidates;
+  }
+}
+
 export class DirectCommitForbiddenError extends Error {
   constructor() {
     super('Direct commits to the base branch are disabled (ALLOW_DIRECT_COMMIT=false)');
@@ -174,7 +193,15 @@ export function createSpecRepoClient(env: SpecEnv): SpecRepoClient {
       try {
         const res = await octokit.rest.repos.getContent({ owner, repo, path: specPath, ref });
         const data = res.data;
-        if (Array.isArray(data) || data.type !== 'file' || typeof data.content !== 'string') {
+
+        if (Array.isArray(data)) {
+          const candidates = data
+            .filter((entry) => entry.type === 'file' && entry.name.endsWith('.md'))
+            .map((entry) => entry.path);
+          throw new SpecIsDirectoryError(specPath, candidates);
+        }
+
+        if (data.type !== 'file' || typeof data.content !== 'string') {
           throw new Error(`${specPath} is not a file`);
         }
 
