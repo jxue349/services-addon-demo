@@ -2,18 +2,25 @@ import { NextResponse } from 'next/server';
 import { getSpecEnv } from '@/lib/env';
 import { apiError, apiErrorFromUnknown, newRequestId } from '@/lib/errors';
 import { SpecIsDirectoryError, SpecNotFoundError, createSpecRepoClient, readSpec } from '@/lib/github';
+import { resolveSpecPath } from '@/lib/resolve-spec-path';
+import { InvalidSpecPathError } from '@/lib/spec-paths';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Loads the spec at the head of the base branch, with version metadata. */
-export async function GET(): Promise<NextResponse> {
+/**
+ * Loads one spec at the head of the base branch, with version metadata.
+ * `?path=` selects a child spec; omitted means the parent / knowledge base.
+ */
+export async function GET(req: Request): Promise<NextResponse> {
   const requestId = newRequestId();
   try {
     const env = getSpecEnv();
-    const spec = await readSpec(createSpecRepoClient(env), env);
+    const specPath = resolveSpecPath(req.url, env);
+    const spec = await readSpec(createSpecRepoClient(env), env, specPath);
     return NextResponse.json(spec);
   } catch (err) {
+    if (err instanceof InvalidSpecPathError) return apiError(400, err.message, requestId);
     if (err instanceof SpecNotFoundError) {
       // The UI turns this into the "Initialize spec in repo" offer.
       return apiError(404, err.message, requestId);

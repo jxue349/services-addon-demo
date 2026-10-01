@@ -18,6 +18,7 @@ export async function POST(): Promise<NextResponse> {
     const env = getSpecEnv();
     const client = createSpecRepoClient(env);
     const result = await commitSpec(client, env, {
+      specPath: env.parentPath,
       content: SEED_SPEC,
       baseSha: NEW_FILE_SHA,
       commitMessage: SEED_COMMIT_MESSAGE,

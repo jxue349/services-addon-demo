@@ -10,7 +10,14 @@ export type SpecEnv = {
   githubToken: string;
   owner: string;
   repo: string;
-  specPath: string;
+  /**
+   * Directory holding every spec. The parent spec (the knowledge base) lives
+   * at `parentPath`; each child spec sits in its own subdirectory under here.
+   * Every path the app will read or write is confined to this subtree.
+   */
+  specRoot: string;
+  /** The parent spec / knowledge base. Always selectable, never a child. */
+  parentPath: string;
   baseBranch: string;
   authorName: string;
   authorEmail: string;
@@ -88,6 +95,18 @@ function require_(names: string[]): Record<string, string> {
   return out;
 }
 
+/** Repo paths are always relative and never end in a slash. */
+function stripSlashes(value: string): string {
+  return value.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+function requireRoot(root: string): string {
+  if (root === '') {
+    throw new InvalidEnvError('SPEC_ROOT must name a directory (it confines which files the app may touch)');
+  }
+  return root;
+}
+
 function pick(record: Record<string, string>, key: string): string {
   const value = record[key];
   if (value === undefined) throw new MissingEnvError([key]);
@@ -100,7 +119,16 @@ export function getSpecEnv(): SpecEnv {
     githubToken: pick(required, 'GITHUB_TOKEN'),
     owner: pick(required, 'GITHUB_OWNER'),
     repo: pick(required, 'GITHUB_REPO'),
-    specPath: process.env.SPEC_PATH?.trim() || 'spec/behavior.md',
+    // Must be non-empty: an empty root would make assertSpecPath's containment
+    // check a no-op and let any .md in the repo be read or written.
+    specRoot: requireRoot(stripSlashes(process.env.SPEC_ROOT?.trim() || 'spec')),
+    // SPEC_PATH is the pre-multi-spec name for the same thing; honour it so
+    // existing deployments keep pointing at their spec after the upgrade.
+    parentPath: stripSlashes(
+      process.env.SPEC_PARENT_PATH?.trim() ||
+        process.env.SPEC_PATH?.trim() ||
+        `${stripSlashes(process.env.SPEC_ROOT?.trim() || 'spec')}/parent.md`,
+    ),
     baseBranch: process.env.SPEC_BASE_BRANCH?.trim() || 'main',
     authorName: process.env.GIT_AUTHOR_NAME?.trim() || 'AI Spec Explorer',
     authorEmail: process.env.GIT_AUTHOR_EMAIL?.trim() || 'spec-explorer@wyze.com',

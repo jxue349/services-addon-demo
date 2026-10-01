@@ -8,9 +8,9 @@ import { HistoryDrawer } from '@/components/HistoryDrawer';
 import { SpecPanel } from '@/components/SpecPanel';
 import { StatesTab } from '@/components/StatesTab';
 import { TestsTab } from '@/components/TestsTab';
-import { ApiError, commitSpec, getSpec, initSpec, pullLatest } from '@/lib/client/api';
+import { ApiError, commitSpec, getSpec, initSpec, listSpecs, pullLatest } from '@/lib/client/api';
 import { findRuleRange } from '@/lib/client/rules';
-import type { CommitResponse, SpecResponse, TestMatrix } from '@/lib/schemas';
+import type { CommitResponse, SpecListEntry, SpecResponse, TestMatrix } from '@/lib/schemas';
 
 const TABS = [
   { id: 'explorer', label: 'Behavior Explorer' },
@@ -23,6 +23,9 @@ type TabId = (typeof TABS)[number]['id'];
 
 export default function Page() {
   const [spec, setSpec] = useState<SpecResponse | null>(null);
+  const [specs, setSpecs] = useState<SpecListEntry[]>([]);
+  // undefined = "whatever the server considers the parent"; set once chosen.
+  const [selectedPath, setSelectedPath] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [pulling, setPulling] = useState(false);
@@ -43,14 +46,15 @@ export default function Page() {
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const dirty = spec !== null && draft !== spec.content;
 
-  const load = useCallback(async (mode: 'initial' | 'pull') => {
+  const load = useCallback(async (mode: 'initial' | 'pull', path?: string) => {
     if (mode === 'initial') setLoading(true);
     else setPulling(true);
     setSpecError(null);
     try {
-      const next = mode === 'initial' ? await getSpec() : await pullLatest();
+      const next = mode === 'initial' ? await getSpec(path) : await pullLatest(path);
       setSpec(next);
       setDraft(next.content);
+      setSelectedPath(next.specPath);
       setNotFound(false);
       setPrNotice(null);
     } catch (err) {
@@ -68,7 +72,20 @@ export default function Page() {
 
   useEffect(() => {
     void load('initial');
+    // The selector is additive: if listing fails the app still works on the
+    // parent spec, so this failure is not surfaced as a blocking error.
+    void listSpecs()
+      .then((res) => setSpecs(res.specs))
+      .catch(() => setSpecs([]));
   }, [load]);
+
+  /** Switching spec discards uncommitted edits, so confirm first. */
+  const selectSpec = (path: string) => {
+    if (path === spec?.specPath) return;
+    if (dirty && !window.confirm('Switching spec discards your uncommitted edits. Continue?')) return;
+    setMatrix(null); // a compiled matrix belongs to the spec it came from
+    void load('pull', path);
+  };
 
   /** Reveals a cited rule in the editor: scroll to it and select its paragraph. */
   const revealRule = useCallback(
@@ -97,7 +114,7 @@ export default function Page() {
 
   const handlePull = () => {
     if (dirty && !window.confirm('Pulling the latest spec discards your uncommitted edits. Continue?')) return;
-    void load('pull');
+    void load('pull', selectedPath);
   };
 
   const handleInitialize = async () => {
@@ -130,6 +147,7 @@ export default function Page() {
     setCommitError(null);
     try {
       const result = await commitSpec({
+        specPath: spec.specPath,
         content: draft,
         baseSha: spec.sha,
         commitMessage: input.commitMessage,
@@ -143,7 +161,7 @@ export default function Page() {
       } else {
         // Direct commit landed on the base branch: re-read so the version badge
         // and the base SHA reflect reality and the editor stops reading dirty.
-        await load('pull');
+        await load('pull', spec.specPath);
       }
     } catch (err) {
       setCommitError(err);
@@ -176,6 +194,9 @@ export default function Page() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
         <SpecPanel
+          specs={specs}
+          selectedPath={selectedPath ?? spec?.specPath ?? ''}
+          onSelectSpec={selectSpec}
           spec={spec}
           draft={draft}
           dirty={dirty}

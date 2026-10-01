@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countLines, extractRuleIds, findRuleRange } from '@/lib/client/rules';
+import { countLines, extractRuleIds, findRuleRange, namespaceFor } from '@/lib/client/rules';
 import { sanitizeLabel, toMermaidSource } from '@/lib/client/mermaid-source';
 import { testsToCsv, testsToMarkdown } from '@/lib/client/export';
 import type { TestCase } from '@/lib/schemas';
@@ -145,5 +145,41 @@ describe('QA matrix export', () => {
   it('quotes every CSV field and doubles internal quotes', () => {
     const csv = testsToCsv([{ ...tests[0]!, scenario: 'he said "no"' }]);
     expect(csv.split('\r\n')[1]).toContain('"he said ""no"""');
+  });
+});
+
+describe('namespaced rule IDs', () => {
+  const CHILD = [
+    '# CAMPLUS spec',
+    '',
+    '- **CAMPLUS-R-101** — First rule for CAMPLUS.',
+    '- **CAMPLUS-R-102** — Second rule, wrapping onto',
+    '  a continuation line.',
+  ].join('\n');
+
+  it('extracts namespaced ids', () => {
+    expect(extractRuleIds(CHILD)).toEqual(['CAMPLUS-R-101', 'CAMPLUS-R-102']);
+  });
+
+  it('still extracts bare ids from the parent spec', () => {
+    expect(extractRuleIds('- **R-101** — x\n- **R-302** — y')).toEqual(['R-101', 'R-302']);
+  });
+
+  it('reveals a namespaced rule without catching its neighbour', () => {
+    const range = findRuleRange(CHILD, 'CAMPLUS-R-101')!;
+    const selected = CHILD.slice(range.start, range.end);
+    expect(selected).toBe('- **CAMPLUS-R-101** — First rule for CAMPLUS.');
+  });
+
+  it('does not match a bare id against a namespaced one', () => {
+    // Asking for R-101 must not land on CAMPLUS-R-101: the word boundary in
+    // the pattern would otherwise make a parent citation jump to a child rule.
+    expect(findRuleRange(CHILD, 'R-101')).toBeNull();
+  });
+
+  it('derives a namespace from the spec directory', () => {
+    expect(namespaceFor('spec/cam-plus/behavior.md', 'spec')).toBe('CAMPLUS');
+    expect(namespaceFor('spec/upsell/behavior.md', 'spec')).toBe('UPSELL');
+    expect(namespaceFor('spec/parent.md', 'spec')).toBe('PARENT');
   });
 });

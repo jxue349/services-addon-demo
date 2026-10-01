@@ -18,19 +18,22 @@ export type RepoFile = { content: string; sha: string };
 
 export interface SpecRepoClient {
   /** Returns null when the path does not exist on `ref`. */
-  getFile(ref: string): Promise<RepoFile | null>;
+  getFile(ref: string, path: string): Promise<RepoFile | null>;
   getBranchHeadSha(branch: string): Promise<string>;
   createBranch(name: string, fromSha: string): Promise<void>;
   putFile(args: {
     branch: string;
+    path: string;
     content: string;
     message: string;
     /** Omitted when creating the file for the first time. */
     sha?: string;
   }): Promise<{ commitSha: string; sha: string }>;
   createPullRequest(args: { head: string; title: string; body: string }): Promise<{ url: string }>;
-  lastCommitForPath(ref: string): Promise<HistoryEntry | null>;
-  listCommitsForPath(ref: string, limit: number): Promise<HistoryEntry[]>;
+  lastCommitForPath(ref: string, path: string): Promise<HistoryEntry | null>;
+  listCommitsForPath(ref: string, path: string, limit: number): Promise<HistoryEntry[]>;
+  /** Every .md file under `root`, recursively. Used by the spec selector. */
+  listSpecFiles(ref: string, root: string): Promise<string[]>;
 }
 
 export class SpecConflictError extends Error {
@@ -81,6 +84,8 @@ export class DirectCommitForbiddenError extends Error {
 // --------------------------------------------------------------------------
 
 export type CommitInput = {
+  /** Which spec is being written. Validated by the route before it gets here. */
+  specPath: string;
   content: string;
   baseSha: string;
   commitMessage: string;
@@ -94,8 +99,13 @@ export type CommitInput = {
  * moved. A spec is product truth: silently overwriting someone else's rule
  * change is worse than making the user re-apply theirs.
  */
-export async function assertNoConflict(client: SpecRepoClient, branch: string, baseSha: string): Promise<RepoFile | null> {
-  const current = await client.getFile(branch);
+export async function assertNoConflict(
+  client: SpecRepoClient,
+  branch: string,
+  specPath: string,
+  baseSha: string,
+): Promise<RepoFile | null> {
+  const current = await client.getFile(branch, specPath);
 
   if (baseSha === NEW_FILE_SHA) {
     // Caller believes the file is absent. If it exists now, someone created it.
@@ -122,12 +132,13 @@ export async function commitSpec(
   const wantsDirect = input.direct === true;
   if (wantsDirect && !env.allowDirectCommit) throw new DirectCommitForbiddenError();
 
-  const existing = await assertNoConflict(client, env.baseBranch, input.baseSha);
+  const existing = await assertNoConflict(client, env.baseBranch, input.specPath, input.baseSha);
   const existingSha = existing?.sha;
 
   if (wantsDirect) {
     const written = await client.putFile({
       branch: env.baseBranch,
+      path: input.specPath,
       content: input.content,
       message: input.commitMessage,
       ...(existingSha !== undefined ? { sha: existingSha } : {}),
@@ -143,6 +154,7 @@ export async function commitSpec(
 
   const written = await client.putFile({
     branch,
+    path: input.specPath,
     content: input.content,
     message: input.commitMessage,
     ...(existingSha !== undefined ? { sha: existingSha } : {}),
@@ -186,10 +198,10 @@ function toHistoryEntry(commit: {
 
 export function createSpecRepoClient(env: SpecEnv): SpecRepoClient {
   const octokit = new Octokit({ auth: env.githubToken, request: { timeout: 30_000 } });
-  const { owner, repo, specPath } = env;
+  const { owner, repo } = env;
 
   return {
-    async getFile(ref) {
+    async getFile(ref, specPath) {
       try {
         const res = await octokit.rest.repos.getContent({ owner, repo, path: specPath, ref });
         const data = res.data;
@@ -234,7 +246,7 @@ export function createSpecRepoClient(env: SpecEnv): SpecRepoClient {
       await octokit.rest.git.createRef({ owner, repo, ref: `refs/heads/${name}`, sha: fromSha });
     },
 
-    async putFile({ branch, content, message, sha }) {
+    async putFile({ branch, path: specPath, content, message, sha }) {
       const res = await octokit.rest.repos.createOrUpdateFileContents({
         owner,
         repo,
@@ -264,25 +276,41 @@ export function createSpecRepoClient(env: SpecEnv): SpecRepoClient {
       return { url: res.data.html_url };
     },
 
-    async lastCommitForPath(ref) {
+    async lastCommitForPath(ref, specPath) {
       const res = await octokit.rest.repos.listCommits({ owner, repo, path: specPath, sha: ref, per_page: 1 });
       const first = res.data[0];
       return first ? toHistoryEntry(first) : null;
     },
 
-    async listCommitsForPath(ref, limit) {
+    async listCommitsForPath(ref, specPath, limit) {
       const res = await octokit.rest.repos.listCommits({ owner, repo, path: specPath, sha: ref, per_page: limit });
       return res.data.map(toHistoryEntry);
+    },
+
+    async listSpecFiles(ref, root) {
+      // One tree call instead of walking directories: a spec repo is small,
+      // and this stays O(1) requests however deep the per-spec folders go.
+      const branch = await octokit.rest.git.getRef({ owner, repo, ref: `heads/${ref}` }).catch(() => null);
+      const sha = branch?.data.object.sha ?? ref;
+
+      const tree = await octokit.rest.git.getTree({ owner, repo, tree_sha: sha, recursive: 'true' });
+      const prefix = root === '' ? '' : `${root}/`;
+
+      return tree.data.tree
+        .filter((entry) => entry.type === 'blob' && typeof entry.path === 'string')
+        .map((entry) => entry.path as string)
+        .filter((path) => path.startsWith(prefix) && /\.md$/i.test(path))
+        .sort();
     },
   };
 }
 
 /** Loads the spec plus the version metadata the UI shows in the version badge. */
-export async function readSpec(client: SpecRepoClient, env: SpecEnv): Promise<SpecResponse> {
-  const file = await client.getFile(env.baseBranch);
-  if (file === null) throw new SpecNotFoundError(env.specPath);
+export async function readSpec(client: SpecRepoClient, env: SpecEnv, specPath: string): Promise<SpecResponse> {
+  const file = await client.getFile(env.baseBranch, specPath);
+  if (file === null) throw new SpecNotFoundError(specPath);
 
-  const commit = await client.lastCommitForPath(env.baseBranch);
+  const commit = await client.lastCommitForPath(env.baseBranch, specPath);
 
   return {
     content: file.content,
@@ -293,8 +321,11 @@ export async function readSpec(client: SpecRepoClient, env: SpecEnv): Promise<Sp
       date: commit?.date ?? '',
       message: commit?.message ?? '',
     },
-    htmlUrl: `https://github.com/${env.owner}/${env.repo}/blob/${env.baseBranch}/${env.specPath}`,
-    specPath: env.specPath,
+    htmlUrl: `https://github.com/${env.owner}/${env.repo}/blob/${env.baseBranch}/${specPath}`,
+    specPath,
+    isParent: specPath === env.parentPath,
+    specRoot: env.specRoot,
+    parentPath: env.parentPath,
     baseBranch: env.baseBranch,
     allowDirectCommit: env.allowDirectCommit,
   };

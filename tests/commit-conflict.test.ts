@@ -34,13 +34,20 @@ function makeClient(options: FakeOptions = {}) {
     createPullRequest,
     lastCommitForPath: vi.fn(async () => null),
     listCommitsForPath: vi.fn(async () => []),
+    listSpecFiles: vi.fn(async () => []),
   };
 
   return { client, putFile, createBranch, createPullRequest, getFile, getBranchHeadSha };
 }
 
 const env = { baseBranch: 'main', allowDirectCommit: false };
-const input = { content: '# spec v2', baseSha: 'blobOLD', commitMessage: 'spec: tighten R-302' };
+const SPEC_PATH = 'spec/parent.md';
+const input = {
+  specPath: SPEC_PATH,
+  content: '# spec v2',
+  baseSha: 'blobOLD',
+  commitMessage: 'spec: tighten R-302',
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -49,13 +56,13 @@ beforeEach(() => {
 describe('assertNoConflict', () => {
   it('passes when the blob SHA still matches', async () => {
     const { client } = makeClient({ file: { content: '# spec', sha: 'blobOLD' } });
-    await expect(assertNoConflict(client, 'main', 'blobOLD')).resolves.toEqual({ content: '# spec', sha: 'blobOLD' });
+    await expect(assertNoConflict(client, 'main', SPEC_PATH, 'blobOLD')).resolves.toEqual({ content: '# spec', sha: 'blobOLD' });
   });
 
   it('throws with the upstream content when the SHA moved', async () => {
     const { client } = makeClient({ file: { content: '# spec edited elsewhere', sha: 'blobTHEIRS' } });
     try {
-      await assertNoConflict(client, 'main', 'blobOLD');
+      await assertNoConflict(client, 'main', SPEC_PATH, 'blobOLD');
       expect.unreachable('should have thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(SpecConflictError);
@@ -65,17 +72,17 @@ describe('assertNoConflict', () => {
 
   it('treats an upstream deletion as a conflict', async () => {
     const { client } = makeClient({ file: null });
-    await expect(assertNoConflict(client, 'main', 'blobOLD')).rejects.toBeInstanceOf(SpecConflictError);
+    await expect(assertNoConflict(client, 'main', SPEC_PATH, 'blobOLD')).rejects.toBeInstanceOf(SpecConflictError);
   });
 
   it('accepts a first-time create when the file is absent', async () => {
     const { client } = makeClient({ file: null });
-    await expect(assertNoConflict(client, 'main', NEW_FILE_SHA)).resolves.toBeNull();
+    await expect(assertNoConflict(client, 'main', SPEC_PATH, NEW_FILE_SHA)).resolves.toBeNull();
   });
 
   it('rejects a first-time create when someone already created the file', async () => {
     const { client } = makeClient({ file: { content: '# theirs', sha: 'blobTHEIRS' } });
-    await expect(assertNoConflict(client, 'main', NEW_FILE_SHA)).rejects.toBeInstanceOf(SpecConflictError);
+    await expect(assertNoConflict(client, 'main', SPEC_PATH, NEW_FILE_SHA)).rejects.toBeInstanceOf(SpecConflictError);
   });
 });
 
@@ -91,6 +98,7 @@ describe('commitSpec — pull request flow', () => {
     expect(createBranch).toHaveBeenCalledWith('spec/update-2026-09-11T17-04-05-678', 'baseHead');
     expect(putFile).toHaveBeenCalledWith({
       branch: 'spec/update-2026-09-11T17-04-05-678',
+      path: SPEC_PATH,
       content: '# spec v2',
       message: 'spec: tighten R-302',
       sha: 'blobOLD',
@@ -146,6 +154,7 @@ describe('commitSpec — direct commit flow', () => {
     expect(createPullRequest).not.toHaveBeenCalled();
     expect(putFile).toHaveBeenCalledWith({
       branch: 'main',
+      path: SPEC_PATH,
       content: '# spec v2',
       message: 'spec: tighten R-302',
       sha: 'blobOLD',

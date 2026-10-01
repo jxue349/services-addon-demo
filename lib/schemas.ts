@@ -66,6 +66,8 @@ export const ConsistencyRequestSchema = z.object({
 });
 
 export const CommitRequestSchema = z.object({
+  /** Repo path of the spec being written; validated against the spec root. */
+  specPath: z.string().min(1).max(400),
   content: specString,
   baseSha: z.string().min(1).max(200),
   commitMessage: z.string().min(1).max(500),
@@ -160,8 +162,27 @@ export type SpecResponse = {
   commit: { sha: string; author: string; date: string; message: string };
   htmlUrl: string;
   specPath: string;
+  /** True when this is the parent spec / knowledge base. */
+  isParent: boolean;
+  specRoot: string;
+  parentPath: string;
   baseBranch: string;
   allowDirectCommit: boolean;
+};
+
+export type SpecListEntry = {
+  path: string;
+  /** Directory name for a child spec, or an explicit parent label. */
+  label: string;
+  isParent: boolean;
+};
+
+export type SpecListResponse = {
+  specs: SpecListEntry[];
+  parentPath: string;
+  specRoot: string;
+  /** False when the parent spec does not exist in the repo yet. */
+  parentExists: boolean;
 };
 
 export type CommitResponse = {

@@ -3,13 +3,32 @@
  * cites. Pure string work — no DOM — so it is trivially testable.
  */
 
-const RULE_ID = /\bR-\d{3}\b/g;
+/**
+ * A rule ID, with or without a spec namespace.
+ *
+ * Child specs namespace their rules (`CAMPLUS-R-101`) so that merging them
+ * into the parent cannot collide, and so a citation says which spec it came
+ * from. Bare `R-101` stays valid for the parent spec and for anything written
+ * before namespacing.
+ */
+const RULE_ID = /\b(?:[A-Z][A-Z0-9]{1,15}-)?R-\d{3}\b/g;
 
 /** Every distinct rule ID in the spec, in document order. */
 export function extractRuleIds(spec: string): string[] {
   const seen = new Set<string>();
   for (const match of spec.matchAll(RULE_ID)) seen.add(match[0]);
   return [...seen];
+}
+
+/**
+ * Namespace prefix for a child spec, derived from its directory.
+ * `spec/cam-plus/behavior.md` -> `CAMPLUS`, so its rules read `CAMPLUS-R-101`.
+ */
+export function namespaceFor(specPath: string, specRoot: string): string {
+  const rootSegments = specRoot.split('/').filter((s) => s !== '');
+  const segments = specPath.split('/').slice(rootSegments.length);
+  const dir = segments.length > 1 ? segments[0] : segments[0]?.replace(/\.md$/i, '');
+  return (dir ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16) || 'SPEC';
 }
 
 function escapeRegExp(input: string): string {
@@ -27,11 +46,18 @@ export function findRuleRange(spec: string, ruleId: string): RuleRange | null {
   const id = escapeRegExp(ruleId.trim());
   if (id === '') return null;
 
-  const definition = new RegExp(`^[ \\t]*(?:[-*+][ \\t]+)?(?:\\*\\*|__)?${id}(?:\\*\\*|__)?\\b`, 'm');
-  const match = definition.exec(spec);
+  // A rule id must not match inside a longer id: asking for R-101 must never
+  // land on CAMPLUS-R-101, or a parent citation would jump into a child spec.
+  const notIdChar = '(?<![A-Za-z0-9-])';
 
-  const start = match?.index ?? spec.indexOf(ruleId);
-  if (start === -1) return null;
+  const definition = new RegExp(`^[ \\t]*(?:[-*+][ \\t]+)?(?:\\*\\*|__)?${notIdChar}${id}(?:\\*\\*|__)?\\b`, 'm');
+  const citation = new RegExp(`${notIdChar}${id}\\b`);
+
+  // Prefer the definition line; fall back to the first citation anywhere.
+  const match = definition.exec(spec) ?? citation.exec(spec);
+  if (match === null) return null;
+
+  const start = match.index;
 
   let end = endOfRuleBlock(spec, start);
 

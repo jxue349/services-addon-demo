@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react';
 import { ErrorNote, Spinner } from './ui';
 import { getHistory } from '@/lib/client/api';
-import type { HistoryEntry } from '@/lib/schemas';
+import type { HistoryVersionEntry } from '@/lib/client/api';
 
 /** Last 10 commits touching the spec file. Read-only; GitHub owns the truth. */
 export function HistoryDrawer({ open, specPath, onClose }: { open: boolean; specPath: string; onClose: () => void }) {
-  const [commits, setCommits] = useState<HistoryEntry[] | null>(null);
+  const [commits, setCommits] = useState<HistoryVersionEntry[] | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
@@ -15,7 +15,7 @@ export function HistoryDrawer({ open, specPath, onClose }: { open: boolean; spec
     let cancelled = false;
     setCommits(null);
     setError(null);
-    void getHistory()
+    void getHistory(specPath)
       .then((res) => {
         if (!cancelled) setCommits(res.commits);
       })
@@ -25,7 +25,7 @@ export function HistoryDrawer({ open, specPath, onClose }: { open: boolean; spec
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, specPath]);
 
   if (!open) return null;
 
@@ -61,6 +61,11 @@ export function HistoryDrawer({ open, specPath, onClose }: { open: boolean; spec
                   className="block rounded-md border border-line bg-panelAlt px-3 py-2 transition-colors hover:border-accent/50"
                 >
                   <div className="flex items-baseline gap-2">
+                    {c.version !== null ? (
+                      <span className="rounded border border-secondary/50 px-1 font-mono text-[10px] text-secondary">
+                        v{c.version}
+                      </span>
+                    ) : null}
                     <span className="font-mono text-[10px] text-accent">{c.shortSha}</span>
                     <span className="truncate text-xs text-ink">{c.message || '(no message)'}</span>
                   </div>

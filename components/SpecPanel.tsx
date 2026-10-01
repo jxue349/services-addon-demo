@@ -1,8 +1,9 @@
 'use client';
 
 import type { RefObject } from 'react';
+import { SpecSelector } from './SpecSelector';
 import { Button, ErrorNote, Spinner } from './ui';
-import type { SpecResponse } from '@/lib/schemas';
+import type { SpecListEntry, SpecResponse } from '@/lib/schemas';
 
 function shortDate(iso: string): string {
   if (iso === '') return 'unknown date';
@@ -12,6 +13,9 @@ function shortDate(iso: string): string {
 }
 
 export function SpecPanel({
+  specs,
+  selectedPath,
+  onSelectSpec,
   spec,
   draft,
   dirty,
@@ -29,6 +33,9 @@ export function SpecPanel({
   onInitialize,
   onDismissError,
 }: {
+  specs: SpecListEntry[];
+  selectedPath: string;
+  onSelectSpec: (path: string) => void;
   spec: SpecResponse | null;
   draft: string;
   dirty: boolean;
@@ -50,7 +57,7 @@ export function SpecPanel({
     <section className="flex min-h-0 flex-col rounded-lg border border-line bg-panel">
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <h2 className="mr-auto text-xs font-semibold uppercase tracking-[0.14em] text-inkDim">
-          Product Behavior Spec
+          {spec?.isParent === false ? 'Spec' : 'Knowledge Base'}
         </h2>
 
         {spec ? (
@@ -71,6 +78,12 @@ export function SpecPanel({
           </span>
         ) : null}
       </header>
+
+      {specs.length > 1 ? (
+        <div className="border-b border-line px-3 py-2">
+          <SpecSelector specs={specs} value={selectedPath} disabled={loading || pulling} onChange={onSelectSpec} />
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <Button onClick={onPullLatest} loading={pulling} disabled={loading || pulling}>

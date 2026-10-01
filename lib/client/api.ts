@@ -1,5 +1,6 @@
 import type {
   CommitResponse,
+  SpecListResponse,
   ConsistencyReport,
   ExplorerScenarioResult,
   ExplorerWhatIfResult,
@@ -68,16 +69,30 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 // --- spec ------------------------------------------------------------------
 
-export const getSpec = (): Promise<SpecResponse> => request<SpecResponse>('/api/spec', { method: 'GET' });
+/** `path` selects a child spec; omit it for the parent / knowledge base. */
+const withPath = (base: string, path?: string): string =>
+  path === undefined || path === '' ? base : `${base}?path=${encodeURIComponent(path)}`;
 
-export const pullLatest = (): Promise<SpecResponse> => request<SpecResponse>('/api/spec/refresh', { method: 'POST' });
+export const listSpecs = (): Promise<SpecListResponse> =>
+  request<SpecListResponse>('/api/spec/list', { method: 'GET' });
 
-export const getHistory = (): Promise<{ commits: HistoryEntry[] }> =>
-  request<{ commits: HistoryEntry[] }>('/api/spec/history', { method: 'GET' });
+export const getSpec = (path?: string): Promise<SpecResponse> =>
+  request<SpecResponse>(withPath('/api/spec', path), { method: 'GET' });
+
+export const pullLatest = (path?: string): Promise<SpecResponse> =>
+  request<SpecResponse>(withPath('/api/spec/refresh', path), { method: 'POST' });
+
+export type HistoryVersionEntry = HistoryEntry & { version: number | null };
+
+export const getHistory = (path?: string): Promise<{ commits: HistoryVersionEntry[]; truncated: boolean }> =>
+  request<{ commits: HistoryVersionEntry[]; truncated: boolean }>(withPath('/api/spec/history', path), {
+    method: 'GET',
+  });
 
 export const initSpec = (): Promise<CommitResponse> => request<CommitResponse>('/api/spec/init', { method: 'POST' });
 
 export const commitSpec = (body: {
+  specPath: string;
   content: string;
   baseSha: string;
   commitMessage: string;
