@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckInDialog } from '@/components/CheckInDialog';
 import { ConsistencyTab } from '@/components/ConsistencyTab';
 import { ExplorerTab } from '@/components/ExplorerTab';
+import { ParentCheckTab } from '@/components/ParentCheckTab';
 import { HistoryDrawer } from '@/components/HistoryDrawer';
 import { SpecPanel } from '@/components/SpecPanel';
 import { StatesTab } from '@/components/StatesTab';
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'tests', label: 'QA Test Matrix' },
   { id: 'states', label: 'State Machine' },
   { id: 'consistency', label: 'Consistency Check' },
+  { id: 'parent', label: 'Parent Check' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -257,6 +259,9 @@ export default function Page() {
             </div>
             <div className={tab === 'consistency' ? 'block' : 'hidden'}>
               <ConsistencyTab spec={draft} matrix={matrix} onReveal={revealRule} />
+            </div>
+            <div className={tab === 'parent' ? 'block' : 'hidden'}>
+              <ParentCheckTab spec={spec} draft={draft} onReveal={revealRule} />
             </div>
           </div>
         </section>

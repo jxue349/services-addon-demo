@@ -22,6 +22,7 @@ function makeClient(options: FakeOptions = {}) {
   const createBranch = vi.fn<SpecRepoClient['createBranch']>(async () => undefined);
   const createPullRequest = vi.fn<SpecRepoClient['createPullRequest']>(async () => ({
     url: 'https://github.com/o/r/pull/7',
+    number: 7,
   }));
   const getFile = vi.fn<SpecRepoClient['getFile']>(async () => options.file ?? null);
   const getBranchHeadSha = vi.fn<SpecRepoClient['getBranchHeadSha']>(async () => 'baseHead');
@@ -35,6 +36,8 @@ function makeClient(options: FakeOptions = {}) {
     lastCommitForPath: vi.fn(async () => null),
     listCommitsForPath: vi.fn(async () => []),
     listSpecFiles: vi.fn(async () => []),
+    requestReviewers: vi.fn(async () => ({ requested: [], refused: [] })),
+    updatePullRequestBody: vi.fn(async () => undefined),
   };
 
   return { client, putFile, createBranch, createPullRequest, getFile, getBranchHeadSha };

@@ -1,5 +1,9 @@
 import type {
   CommitResponse,
+  ConflictFinding,
+  ConflictReport,
+  ProposedAddition,
+  RequestChangeResponse,
   SpecListResponse,
   ConsistencyReport,
   ExplorerScenarioResult,
@@ -124,3 +128,20 @@ export const compileConsistency = (spec: string, testMatrix?: TestCase[]): Promi
     method: 'POST',
     body: JSON.stringify(testMatrix && testMatrix.length > 0 ? { spec, testMatrix } : { spec }),
   });
+
+// --- parent knowledge base -------------------------------------------------
+
+export const compileConflicts = (parentSpec: string, childSpec: string, childLabel: string): Promise<ConflictReport> =>
+  request<ConflictReport>('/api/compile/conflicts', {
+    method: 'POST',
+    body: JSON.stringify({ parentSpec, childSpec, childLabel }),
+  });
+
+export const requestParentChange = (body: {
+  childPath: string;
+  childLabel: string;
+  summary: string;
+  additions: ProposedAddition[];
+  conflicts: ConflictFinding[];
+}): Promise<RequestChangeResponse> =>
+  request<RequestChangeResponse>('/api/spec/request-change', { method: 'POST', body: JSON.stringify(body) });

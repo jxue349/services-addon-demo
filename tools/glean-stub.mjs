@@ -93,6 +93,39 @@ const CONSISTENCY = {
   ],
 };
 
+const CONFLICTS = {
+  headline: 'The child spec contradicts the parent on grace-period length (16 vs 30 days).',
+  findings: [
+    {
+      kind: 'contradiction',
+      childRule: 'CAMPLUS-R-102',
+      parentRule: 'R-302',
+      summary: 'Child grants a 30-day grace period; the parent grants 16 days, IAP only.',
+      recommendation: 'Spec owners must decide which length is correct before this can merge.',
+    },
+    {
+      kind: 'addition',
+      childRule: 'CAMPLUS-R-101',
+      parentRule: null,
+      summary: 'Parent is silent on per-device upsell prompts.',
+      recommendation: 'Safe to merge into the parent as a new rule.',
+    },
+    {
+      kind: 'duplicate',
+      childRule: 'CAMPLUS-R-103',
+      parentRule: 'R-101',
+      summary: 'Restates account-level coverage, which the parent already defines.',
+      recommendation: 'Nothing to merge.',
+    },
+  ],
+  proposedAdditions: [
+    {
+      ruleId: 'CAMPLUS-R-101',
+      markdown: '- **CAMPLUS-R-101** — A device-level upsell prompt is shown at most once per billing period.',
+    },
+  ],
+};
+
 const WHAT_IF = {
   answer: 'The refund revokes the entitlement immediately; the grace period does not survive it (R-303 overrides R-302).',
   rules: ['R-303', 'R-302'],
@@ -113,6 +146,7 @@ function replyFor(prompt) {
   if (prompt.includes('compile a QA test matrix')) return TESTS;
   if (prompt.includes('lifecycle state machine')) return STATES;
   if (prompt.includes('check the spec against the prototype')) return CONSISTENCY;
+  if (prompt.includes('what the parent must change')) return CONFLICTS;
   if (prompt.includes('answer a what-if question')) return WHAT_IF;
   return SCENARIO;
 }

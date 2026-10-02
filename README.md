@@ -10,6 +10,7 @@ that one document into four representations:
 | **QA Test Matrix** | 15–25 test cases, weighted toward behavior the prototype never visualized |
 | **State Machine** | The subscription lifecycle as a Mermaid diagram plus a transitions table |
 | **Consistency Check** | Every rule in the spec scored against prototype coverage and QA coverage |
+| **Parent Check** | A child spec against the parent knowledge base: what merges, what contradicts, what is already covered — then opens a change request |
 
 Every conclusion cites the rule IDs (`R-xxx`) it came from, and every rule ID
 renders as a chip that reveals that rule in the spec editor.
@@ -146,6 +147,69 @@ subscription-management spec (channels, entitlement scopes, rules R-101 to
 R-401, lifecycle states, and a prototype-coverage list) through the same
 pull-request flow as any other change — the first version gets reviewed like
 every version after it.
+
+---
+
+## The parent knowledge base
+
+One parent spec is the organisation-wide knowledge base for subscription
+management, entitlement, and upsell behavior. Each new spec lives in its own
+directory and is distilled and merged into the parent over time.
+
+```
+spec/
+  parent.md              SPEC_PARENT_PATH — the knowledge base
+  followers.txt          who reviews changes to it
+  cam-plus/behavior.md   a child spec
+  upsell/behavior.md
+```
+
+Pick which spec the compilers run against with the selector in the left panel.
+It is deliberately one-at-a-time: each spec is its own source of truth until it
+merges into the parent, and compiling a union of documents would make rule
+citations ambiguous about which spec they came from.
+
+**Rule IDs are namespaced per spec** — `CAMPLUS-R-101` — so merging children
+into the parent cannot collide and a citation always says where it came from.
+Bare `R-xxx` stays valid for the parent.
+
+### Requesting a change to the parent
+
+**Parent Check** compares the selected child against the parent and classifies
+every rule as an `addition` (parent is silent), a `contradiction` (both define
+it, incompatibly), or a `duplicate`. Then **Request change to parent** opens a
+pull request against the parent spec.
+
+Two rules govern what that PR contains:
+
+- **Only additions are applied**, and they are applied by deterministic string
+  work in `lib/merge-additions.ts`, not by asking the model to rewrite the
+  parent. A model rewrite of the knowledge base could silently reword or drop
+  rules nobody asked it to touch, and the parent is the one document that must
+  never change by accident. Re-requesting is idempotent: a rule the parent
+  already has is skipped, not duplicated.
+- **Contradictions are never applied.** Which spec wins is a product decision,
+  so they travel to the followers as a table in the PR body instead.
+
+The request always goes out as a pull request, whatever `ALLOW_DIRECT_COMMIT`
+says. The knowledge base always gets reviewed.
+
+### Followers
+
+`spec/followers.txt` (beside the parent spec) lists one GitHub username per
+line; `#` starts a comment.
+
+They are requested as PR reviewers. **GitHub only allows review requests for
+users with repo access**, which the people who care most about subscription
+behavior often do not have — so anyone GitHub refuses is `@`-mentioned in the
+PR body instead, which still notifies them. The app reports which happened:
+
+```
+1 rule(s) merged · mentioned jxue349, octocat (no write access)
+```
+
+This is why followers live in a plain file rather than CODEOWNERS: CODEOWNERS
+can only name people who can push.
 
 ---
 

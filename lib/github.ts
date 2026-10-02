@@ -29,7 +29,13 @@ export interface SpecRepoClient {
     /** Omitted when creating the file for the first time. */
     sha?: string;
   }): Promise<{ commitSha: string; sha: string }>;
-  createPullRequest(args: { head: string; title: string; body: string }): Promise<{ url: string }>;
+  createPullRequest(args: { head: string; title: string; body: string }): Promise<{ url: string; number: number }>;
+  /**
+   * Asks for review. GitHub refuses reviewers without repo access, so this
+   * reports who it managed to add rather than throwing.
+   */
+  requestReviewers(prNumber: number, reviewers: string[]): Promise<{ requested: string[]; refused: string[] }>;
+  updatePullRequestBody(prNumber: number, body: string): Promise<void>;
   lastCommitForPath(ref: string, path: string): Promise<HistoryEntry | null>;
   listCommitsForPath(ref: string, path: string, limit: number): Promise<HistoryEntry[]>;
   /** Every .md file under `root`, recursively. Used by the spec selector. */
@@ -273,7 +279,30 @@ export function createSpecRepoClient(env: SpecEnv): SpecRepoClient {
         title,
         body,
       });
-      return { url: res.data.html_url };
+      return { url: res.data.html_url, number: res.data.number };
+    },
+
+    async requestReviewers(prNumber, reviewers) {
+      if (reviewers.length === 0) return { requested: [], refused: [] };
+
+      try {
+        const res = await octokit.rest.pulls.requestReviewers({
+          owner,
+          repo,
+          pull_number: prNumber,
+          reviewers,
+        });
+        const requested = (res.data.requested_reviewers ?? []).map((user) => user.login);
+        return { requested, refused: reviewers.filter((name) => !requested.includes(name)) };
+      } catch {
+        // 422 means at least one name cannot review (no access, or is the
+        // PR author). Caller falls back to @-mentioning them in the body.
+        return { requested: [], refused: reviewers };
+      }
+    },
+
+    async updatePullRequestBody(prNumber, body) {
+      await octokit.rest.pulls.update({ owner, repo, pull_number: prNumber, body });
     },
 
     async lastCommitForPath(ref, specPath) {

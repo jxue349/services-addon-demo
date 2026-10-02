@@ -135,6 +135,86 @@ export const StateMachineSchema = z.object({
     .max(80),
 });
 
+// --------------------------------------------------------------------------
+// Parent-spec conflict check
+// --------------------------------------------------------------------------
+
+export const ConflictRequestSchema = z.object({
+  parentSpec: specString,
+  childSpec: specString,
+  childLabel: z.string().min(1).max(80),
+});
+
+/**
+ * `addition` — the child defines behavior the parent is silent on.
+ * `contradiction` — child and parent both define it, incompatibly.
+ * `duplicate` — the child restates a parent rule; nothing to merge.
+ */
+const conflictKind = z.enum(['addition', 'contradiction', 'duplicate']);
+
+export const ConflictReportSchema = z.object({
+  headline: shortText,
+  findings: z
+    .array(
+      z.object({
+        kind: conflictKind,
+        childRule: z.string().max(40),
+        /** The parent rule involved, or null for a pure addition. */
+        parentRule: z.string().max(40).nullable(),
+        summary: shortText,
+        recommendation: shortText,
+      }),
+    )
+    .max(60),
+  /**
+   * Markdown for rules the parent is missing. Only additions are ever applied
+   * automatically — a contradiction is a product decision and goes to the
+   * followers as discussion, never as a silent edit to the knowledge base.
+   */
+  proposedAdditions: z
+    .array(
+      z.object({
+        ruleId: z.string().max(40),
+        markdown: z.string().max(4_000),
+      }),
+    )
+    .max(40),
+});
+
+export const RequestChangeSchema = z.object({
+  childPath: z.string().min(1).max(400),
+  childLabel: z.string().min(1).max(80),
+  summary: z.string().min(1).max(300),
+  additions: z
+    .array(z.object({ ruleId: z.string().max(40), markdown: z.string().max(4_000) }))
+    .max(40),
+  conflicts: z
+    .array(
+      z.object({
+        kind: conflictKind,
+        childRule: z.string().max(40),
+        parentRule: z.string().max(40).nullable(),
+        summary: z.string().max(2_000),
+        recommendation: z.string().max(2_000),
+      }),
+    )
+    .max(60),
+});
+
+export type ConflictReport = z.infer<typeof ConflictReportSchema>;
+export type ConflictFinding = ConflictReport['findings'][number];
+export type ProposedAddition = ConflictReport['proposedAdditions'][number];
+
+export type RequestChangeResponse = {
+  prUrl: string;
+  branch: string;
+  /** Followers we successfully asked to review. */
+  reviewersRequested: string[];
+  /** Followers who could not be added as reviewers; @-mentioned instead. */
+  reviewersMentioned: string[];
+  additionsApplied: number;
+};
+
 const coverage = z.enum(['covered', 'partial', 'missing']);
 
 export const ConsistencySchema = z.object({

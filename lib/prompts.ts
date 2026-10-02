@@ -142,6 +142,65 @@ export function stateMachinePrompt(spec: string): string {
   );
 }
 
+/**
+ * Checks a child spec against the parent knowledge base.
+ *
+ * Both documents go in whole. The parent is authoritative on anything it
+ * already defines, so the question is never "which is right" but "what does
+ * the parent need to change to absorb this child" — and where the two
+ * genuinely disagree, that is a product decision for the followers, not
+ * something the compiler should resolve.
+ */
+export function conflictPrompt(parentSpec: string, childSpec: string, childLabel: string): string {
+  return [
+    'You are comparing a new child specification against the parent Product',
+    'Behavior Specification, which is the organisation-wide knowledge base for',
+    'subscription management, entitlement, and upsell behavior.',
+    '',
+    '<parent-spec>',
+    parentSpec,
+    '</parent-spec>',
+    '',
+    `<child-spec label="${childLabel}">`,
+    childSpec,
+    '</child-spec>',
+    '',
+    SHARED_RULES,
+    '',
+    'Task: decide what the parent must change to absorb the child spec.',
+    '',
+    'Classify every rule in the child spec as exactly one of:',
+    '- "addition": the parent is silent on this behavior, so it can be merged in.',
+    '- "contradiction": parent and child both define this behavior, incompatibly.',
+    '  Say plainly what each one requires. Do NOT pick a winner — that is a',
+    '  product decision for the spec owners.',
+    '- "duplicate": the child restates something the parent already defines.',
+    '  Nothing to merge.',
+    '',
+    'Cite both sides: "childRule" is the id in the child spec, "parentRule" is the',
+    'id in the parent it relates to, or null for a pure addition.',
+    '',
+    'For additions only, supply "proposedAdditions": the markdown to insert into the',
+    'parent, written in the parent\'s own style as a bullet of the form',
+    '"- **ID** — text". Preserve the child\'s namespaced rule id so the parent',
+    'records where the rule came from. Do not propose markdown for',
+    'contradictions or duplicates.',
+    '',
+    'Return exactly this JSON shape:',
+    '{',
+    '  "headline": "the single most important thing a reviewer must know",',
+    '  "findings": [',
+    '    { "kind": "contradiction", "childRule": "CAMPLUS-R-102", "parentRule": "R-302",',
+    '      "summary": "child grants 30 days of grace, parent grants 16",',
+    '      "recommendation": "what the spec owners have to decide" }',
+    '  ],',
+    '  "proposedAdditions": [',
+    '    { "ruleId": "CAMPLUS-R-101", "markdown": "- **CAMPLUS-R-101** — ..." }',
+    '  ]',
+    '}',
+  ].join('\n');
+}
+
 export function consistencyPrompt(spec: string, testMatrix?: TestCase[]): string {
   const qaSection =
     testMatrix && testMatrix.length > 0
