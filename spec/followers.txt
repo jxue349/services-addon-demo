@@ -1,0 +1,5 @@
+# People who follow the parent spec.
+# One GitHub username per line; '#' starts a comment.
+# Followers are requested as PR reviewers; anyone GitHub refuses
+# (no write access) is @-mentioned in the PR body instead.
+jxue349
