@@ -1,0 +1,22 @@
+node_modules/
+.next/
+out/
+build/
+coverage/
+next-env.d.ts
+*.tsbuildinfo
+
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Editor swap files: a swap of .env holds the same secrets as .env
+*.swp
+*.swo
+*~
+
+# Machine-local Claude Code settings (launch.json is shared, this isn't)
+.claude/settings.local.json
+
+.DS_Store
