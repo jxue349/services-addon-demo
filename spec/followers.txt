@@ -1,0 +1,3 @@
+# People who follow the parent spec
+jxue349
+octocat   # deliberately has no write access
